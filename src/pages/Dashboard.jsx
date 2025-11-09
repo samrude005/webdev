@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
-import { LayoutDashboard, Heart, Users, TrendingUp, Plus } from 'lucide-react';
+import { LayoutDashboard, Heart, Users, TrendingUp, Plus, BarChart3, Shield } from 'lucide-react';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -79,31 +79,51 @@ const Dashboard = () => {
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
           <h2 className="text-2xl font-bold mb-4">Quick Actions</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {user?.userType === 'ngo' && (
-              <Link
-                to="/create-campaign"
-                className="flex items-center justify-center px-6 py-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
-              >
-                <Plus className="w-6 h-6 mr-2 text-blue-600" />
-                <span className="text-lg font-semibold text-gray-700">Create Campaign</span>
-              </Link>
-            )}
-            
-            <Link
-              to="/campaigns"
-              className="flex items-center justify-center px-6 py-4 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
-            >
-              <LayoutDashboard className="w-6 h-6 mr-2 text-blue-600" />
-              <span className="text-lg font-semibold text-gray-700">Browse Campaigns</span>
-            </Link>
+            {user?.userType === 'ngo' ? (
+              <>
+                <Link
+                  to="/create-campaign"
+                  className="flex items-center justify-center px-6 py-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                >
+                  <Plus className="w-6 h-6 mr-2 text-blue-600" />
+                  <span className="text-lg font-semibold text-gray-700">Create Campaign</span>
+                </Link>
 
-            <Link
-              to="/profile"
-              className="flex items-center justify-center px-6 py-4 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
-            >
-              <Users className="w-6 h-6 mr-2 text-blue-600" />
-              <span className="text-lg font-semibold text-gray-700">Edit Profile</span>
-            </Link>
+                <Link
+                  to="/admin"
+                  className="flex items-center justify-center px-6 py-4 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                >
+                  <BarChart3 className="w-6 h-6 mr-2 text-blue-600" />
+                  <span className="text-lg font-semibold text-gray-700">View Statistics</span>
+                </Link>
+
+                <Link
+                  to="/profile"
+                  className="flex items-center justify-center px-6 py-4 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                >
+                  <Users className="w-6 h-6 mr-2 text-blue-600" />
+                  <span className="text-lg font-semibold text-gray-700">Edit Profile</span>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  to="/campaigns"
+                  className="flex items-center justify-center px-6 py-4 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                >
+                  <LayoutDashboard className="w-6 h-6 mr-2 text-blue-600" />
+                  <span className="text-lg font-semibold text-gray-700">Browse Campaigns</span>
+                </Link>
+
+                <Link
+                  to="/profile"
+                  className="flex items-center justify-center px-6 py-4 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                >
+                  <Users className="w-6 h-6 mr-2 text-blue-600" />
+                  <span className="text-lg font-semibold text-gray-700">Edit Profile</span>
+                </Link>
+              </>
+            )}
           </div>
         </div>
 
