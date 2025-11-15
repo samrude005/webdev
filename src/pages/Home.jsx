@@ -388,12 +388,18 @@ const Home = () => {
                 Browse Campaigns
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Link>
-              <Link
-                to="/register"
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById('featured-campaigns');
+                  if (el) {
+                    el.scrollIntoView({ behavior: 'smooth' });
+                  }
+                }}
                 className="bg-blue-700 text-white hover:bg-blue-800 px-8 py-3 rounded-lg font-semibold inline-flex items-center justify-center"
               >
                 Get Started
-              </Link>
+              </button>
             </div>
           </div>
         </div>
@@ -440,7 +446,7 @@ const Home = () => {
       </div>
 
       {/* Featured Campaigns */}
-      <div className="py-20">
+      <div id="featured-campaigns" className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center mb-12">
             <h2 className="text-3xl md:text-4xl font-bold">Featured Campaigns</h2>

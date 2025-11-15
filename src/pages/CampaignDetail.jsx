@@ -4,13 +4,21 @@ import { useCampaigns } from '../contexts/CampaignContext';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, MapPin, Calendar, Target, TrendingUp, Heart, Users, Download } from 'lucide-react';
 import jsPDF from 'jspdf';
-import config from '../config';
+import { db } from '../firebase';
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  addDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
 
 const CampaignDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { getCampaignById } = useCampaigns();
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const [campaign, setCampaign] = useState(null);
   const [donations, setDonations] = useState([]);
   const [volunteers, setVolunteers] = useState([]);
@@ -38,11 +46,20 @@ const CampaignDetail = () => {
 
   const loadDonations = async (campaignId) => {
     try {
-      const response = await fetch(`${config.API_URL}/api/donations?campaignId=${campaignId}`);
-      const data = await response.json();
-      if (data.success) {
-        setDonations(data.donations);
-      }
+      const q = query(
+        collection(db, 'donations'),
+        where('campaignId', '==', campaignId)
+      );
+      const snapshot = await getDocs(q);
+      const items = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt,
+        };
+      });
+      setDonations(items);
     } catch (error) {
       console.error('Error loading donations:', error);
     }
@@ -50,11 +67,20 @@ const CampaignDetail = () => {
 
   const loadVolunteers = async (campaignId) => {
     try {
-      const response = await fetch(`${config.API_URL}/api/volunteers?campaignId=${campaignId}`);
-      const data = await response.json();
-      if (data.success) {
-        setVolunteers(data.volunteers);
-      }
+      const q = query(
+        collection(db, 'volunteers'),
+        where('campaignId', '==', campaignId)
+      );
+      const snapshot = await getDocs(q);
+      const items = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          joinedAt: data.joinedAt?.toDate ? data.joinedAt.toDate().toISOString() : data.joinedAt,
+        };
+      });
+      setVolunteers(items);
     } catch (error) {
       console.error('Error loading volunteers:', error);
     }
@@ -78,9 +104,13 @@ const CampaignDetail = () => {
   };
 
   const processPayment = async () => {
-
     if (!selectedPaymentMethod) {
       alert('Please select a payment method');
+      return;
+    }
+
+    if (!user) {
+      navigate('/login');
       return;
     }
 
@@ -88,44 +118,37 @@ const CampaignDetail = () => {
     const transactionId = `TXN${Date.now()}${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
     try {
-      const response = await fetch(`${config.API_URL}/api/donations`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          campaignId: id,
-          userId: user.id,
-          userName: user.name,
-          amount,
-          paymentMethod: selectedPaymentMethod,
-          transactionId,
-          message: 'Thank you for this amazing cause!'
-        })
+      await addDoc(collection(db, 'donations'), {
+        campaignId: id,
+        userId: user.id,
+        userName: user.name,
+        amount,
+        paymentMethod: selectedPaymentMethod,
+        transactionId,
+        message: 'Thank you for this amazing cause!',
+        createdAt: serverTimestamp(),
+        paymentStatus: 'COMPLETED',
+        status: 'completed',
       });
 
-      const data = await response.json();
-      if (data.success) {
-        // Generate PDF receipt
-        generateReceipt({
-          transactionId: data.transactionId || transactionId,
-          amount,
-          paymentMethod: selectedPaymentMethod,
-          campaignTitle: campaign.title,
-          donorName: user.name,
-          date: new Date().toLocaleString()
-        });
+      // Generate PDF receipt
+      generateReceipt({
+        transactionId,
+        amount,
+        paymentMethod: selectedPaymentMethod,
+        campaignTitle: campaign.title,
+        donorName: user.name,
+        date: new Date().toLocaleString(),
+      });
 
-        const updatedRaised = (campaign.raised || 0) + amount;
-        setCampaign({ ...campaign, raised: updatedRaised });
-        setDonationAmount('');
-        setShowDonateForm(false);
-        setShowPaymentModal(false);
-        setSelectedPaymentMethod('');
-        await loadDonations(id);
-        alert('✅ Payment successful! Receipt downloaded. Thank you for your donation!');
-      }
+      const updatedRaised = (campaign.raised || 0) + amount;
+      setCampaign({ ...campaign, raised: updatedRaised });
+      setDonationAmount('');
+      setShowDonateForm(false);
+      setShowPaymentModal(false);
+      setSelectedPaymentMethod('');
+      await loadDonations(id);
+      alert('✅ Payment successful! Receipt downloaded. Thank you for your donation!');
     } catch (error) {
       console.error('Error making donation:', error);
       alert('Failed to process donation. Please try again.');
@@ -231,25 +254,17 @@ const CampaignDetail = () => {
     }
 
     try {
-      const response = await fetch(`${config.API_URL}/api/volunteers`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          campaignId: id,
-          userId: user.id,
-          userName: user.name,
-          skills: 'General volunteering'
-        })
+      await addDoc(collection(db, 'volunteers'), {
+        campaignId: id,
+        userId: user.id,
+        userName: user.name,
+        skills: 'General volunteering',
+        joinedAt: serverTimestamp(),
+        status: 'active',
       });
 
-      const data = await response.json();
-      if (data.success) {
-        await loadVolunteers(id);
-        alert('Successfully registered as volunteer!');
-      }
+      await loadVolunteers(id);
+      alert('Successfully registered as volunteer!');
     } catch (error) {
       console.error('Error registering volunteer:', error);
       alert('Failed to register. Please try again.');

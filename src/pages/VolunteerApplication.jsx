@@ -3,7 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCampaigns } from '../contexts/CampaignContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Users, UserCheck, Briefcase, Calendar, Award, Send, FileText, CheckCircle, XCircle, Eye } from 'lucide-react';
-import config from '../config';
+import { db } from '../firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import VolunteerSidebar from '../components/volunteer/VolunteerSidebar';
 import VolunteerTopNavbar from '../components/volunteer/VolunteerTopNavbar';
 import VolunteerDashboard from './volunteer/VolunteerDashboard';
@@ -132,31 +133,20 @@ const VolunteerApplication = () => {
     setError('');
 
     try {
-      const token = localStorage.getItem('token');
       const applicationData = {
         ...formData,
-        volunteerType
+        volunteerType,
+        userId: user.id,
+        appliedAt: serverTimestamp(),
+        status: 'pending',
       };
 
-      const response = await fetch(`${config.API_URL}/api/volunteer-applications`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(applicationData)
-      });
+      await addDoc(collection(db, 'volunteerApplications'), applicationData);
 
-      const data = await response.json();
-
-      if (data.success) {
-        setSuccess(true);
-        setTimeout(() => {
-          navigate('/dashboard');
-        }, 2000);
-      } else {
-        setError(data.error || 'Failed to submit application');
-      }
+      setSuccess(true);
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 2000);
     } catch (error) {
       console.error('Error submitting application:', error);
       setError('Failed to submit application. Please try again.');

@@ -1,6 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
-import config from '../config';
+import { db } from '../firebase';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
 
 const CampaignContext = createContext(null);
 
@@ -82,15 +91,14 @@ export const CampaignProvider = ({ children }) => {
 
   const fetchCampaigns = async () => {
     try {
-      const response = await fetch(`${config.API_URL}/api/campaigns`);
-      const data = await response.json();
-      
-      if (data.success) {
-        const allCampaigns = [...defaultCampaigns, ...data.campaigns];
-        setCampaigns(allCampaigns);
-      } else {
-        setCampaigns(defaultCampaigns);
-      }
+      const snapshot = await getDocs(collection(db, 'campaigns'));
+      const firebaseCampaigns = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+
+      const allCampaigns = [...defaultCampaigns, ...firebaseCampaigns];
+      setCampaigns(allCampaigns);
     } catch (error) {
       console.error('Error fetching campaigns:', error);
       setCampaigns(defaultCampaigns);
@@ -105,14 +113,18 @@ export const CampaignProvider = ({ children }) => {
 
   const getCampaignById = async (id) => {
     try {
-      const defaultCampaign = defaultCampaigns.find(c => c.id === id);
+      const defaultCampaign = defaultCampaigns.find((c) => c.id === id);
       if (defaultCampaign) {
         return { success: true, campaign: defaultCampaign };
       }
 
-      const response = await fetch(`${config.API_URL}/api/campaigns/${id}`);
-      const data = await response.json();
-      return data;
+      const ref = doc(db, 'campaigns', id);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        return { success: false, error: 'Campaign not found' };
+      }
+
+      return { success: true, campaign: { id: snap.id, ...snap.data() } };
     } catch (error) {
       console.error('Error fetching campaign:', error);
       return { success: false, error: 'Failed to fetch campaign' };
@@ -121,46 +133,34 @@ export const CampaignProvider = ({ children }) => {
 
   const createCampaign = async (campaignData) => {
     try {
-      const response = await fetch(`${config.API_URL}/api/campaigns`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(campaignData),
+      const docRef = await addDoc(collection(db, 'campaigns'), {
+        ...campaignData,
+        createdAt: serverTimestamp(),
+        raised: campaignData.raised || 0,
+        status: campaignData.status || 'active',
       });
 
-      const data = await response.json();
-      
-      if (data.success) {
-        await fetchCampaigns();
-      }
-      
-      return data;
+      await fetchCampaigns();
+
+      return { success: true, id: docRef.id };
     } catch (error) {
+      console.error('Error creating campaign:', error);
       return { success: false, error: 'Failed to create campaign' };
     }
   };
 
   const updateCampaign = async (id, updates) => {
     try {
-      const response = await fetch(`${config.API_URL}/api/campaigns/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(updates),
+      const ref = doc(db, 'campaigns', id);
+      await updateDoc(ref, {
+        ...updates,
       });
 
-      const data = await response.json();
-      
-      if (data.success) {
-        await fetchCampaigns();
-      }
-      
-      return data;
+      await fetchCampaigns();
+
+      return { success: true };
     } catch (error) {
+      console.error('Error updating campaign:', error);
       return { success: false, error: 'Failed to update campaign' };
     }
   };

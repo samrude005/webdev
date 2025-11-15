@@ -20,7 +20,8 @@ import {
   Eye,
   Banknote
 } from 'lucide-react';
-import config from '../config';
+import { db } from '../firebase';
+import { collection, getDocs, updateDoc, doc } from 'firebase/firestore';
 
 const PlatformAdminPanel = () => {
   const { user } = useAuth();
@@ -44,18 +45,18 @@ const PlatformAdminPanel = () => {
 
   const fetchApplications = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${config.API_URL}/api/volunteer-applications`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const snapshot = await getDocs(collection(db, 'volunteerApplications'));
+      const apps = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          appliedAt: data.appliedAt?.toDate ? data.appliedAt.toDate().toISOString() : data.appliedAt,
+        };
       });
-      const data = await response.json();
 
-      if (data.success) {
-        setApplications(data.applications);
-        calculateStats(data.applications);
-      }
+      setApplications(apps);
+      calculateStats(apps);
     } catch (error) {
       console.error('Error fetching applications:', error);
     } finally {
@@ -74,20 +75,9 @@ const PlatformAdminPanel = () => {
 
   const handleApplicationAction = async (applicationId, action) => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${config.API_URL}/api/volunteer-applications/${applicationId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ status: action })
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        fetchApplications(); // Refresh list
-      }
+      const ref = doc(db, 'volunteerApplications', applicationId);
+      await updateDoc(ref, { status: action });
+      fetchApplications(); // Refresh list
     } catch (error) {
       console.error('Error updating application:', error);
     }

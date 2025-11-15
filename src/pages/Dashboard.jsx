@@ -2,9 +2,70 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { LayoutDashboard, Heart, Users, TrendingUp, Plus, BarChart3, Shield } from 'lucide-react';
+import { db } from '../firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { useCampaigns } from '../contexts/CampaignContext';
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const { campaigns } = useCampaigns();
+
+  const [donorStats, setDonorStats] = React.useState({
+    totalDonated: 0,
+    campaignsSupported: 0,
+    impactScore: 0,
+    donations: [],
+    loading: true,
+  });
+
+  React.useEffect(() => {
+    const fetchDonorStats = async () => {
+      if (!user || user.userType !== 'donor') {
+        setDonorStats((prev) => ({ ...prev, loading: false }));
+        return;
+      }
+
+      try {
+        const q = query(
+          collection(db, 'donations'),
+          where('userId', '==', user.id)
+        );
+        const snapshot = await getDocs(q);
+        const donations = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            ...data,
+            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : null,
+          };
+        });
+
+        const totalDonated = donations.reduce(
+          (sum, d) => sum + (Number(d.amount) || 0),
+          0
+        );
+        const campaignsSupported = new Set(
+          donations.map((d) => d.campaignId)
+        ).size;
+
+        // Simple impact score: donations amount + campaigns supported weight
+        const impactScore = totalDonated / 1000 + campaignsSupported * 10;
+
+        setDonorStats({
+          totalDonated,
+          campaignsSupported,
+          impactScore: Math.round(impactScore),
+          donations,
+          loading: false,
+        });
+      } catch (error) {
+        console.error('Error loading donor stats:', error);
+        setDonorStats((prev) => ({ ...prev, loading: false }));
+      }
+    };
+
+    fetchDonorStats();
+  }, [user]);
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
@@ -31,7 +92,9 @@ const Dashboard = () => {
                   {user?.userType === 'volunteer' && 'Hours Volunteered'}
                 </p>
                 <p className="text-3xl font-bold text-gray-900">
-                  {user?.userType === 'donor' ? '₹0' : '0'}
+                  {user?.userType === 'donor'
+                    ? `₹${donorStats.totalDonated.toLocaleString('en-IN')}`
+                    : '0'}
                 </p>
               </div>
               <div className="p-3 bg-blue-100 rounded-full">
@@ -49,7 +112,9 @@ const Dashboard = () => {
                   {user?.userType === 'volunteer' && 'Campaigns Joined'}
                 </p>
                 <p className="text-3xl font-bold text-gray-900">
-                  {user?.userType === 'ngo' ? '₹0' : '0'}
+                  {user?.userType === 'ngo'
+                    ? '₹0'
+                    : donorStats.campaignsSupported.toString()}
                 </p>
               </div>
               <div className="p-3 bg-green-100 rounded-full">
@@ -66,7 +131,11 @@ const Dashboard = () => {
                   {user?.userType === 'donor' && 'Impact Score'}
                   {user?.userType === 'volunteer' && 'Skills Shared'}
                 </p>
-                <p className="text-3xl font-bold text-gray-900">0</p>
+                <p className="text-3xl font-bold text-gray-900">
+                  {user?.userType === 'donor'
+                    ? donorStats.impactScore.toString()
+                    : '0'}
+                </p>
               </div>
               <div className="p-3 bg-purple-100 rounded-full">
                 <TrendingUp className="w-8 h-8 text-purple-600" />
@@ -130,12 +199,61 @@ const Dashboard = () => {
         {/* Recent Activity */}
         <div className="bg-white rounded-lg shadow-md p-6">
           <h2 className="text-2xl font-bold mb-4">Recent Activity</h2>
-          <div className="text-center py-12 text-gray-500">
-            <p>No recent activity to display</p>
-            <Link to="/campaigns" className="text-blue-600 hover:text-blue-700 font-semibold mt-2 inline-block">
-              Start by exploring campaigns
-            </Link>
-          </div>
+          {user?.userType === 'donor' ? (
+            donorStats.loading ? (
+              <div className="text-center py-12 text-gray-500">
+                <p>Loading your donation history...</p>
+              </div>
+            ) : donorStats.donations.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <p>No recent activity to display</p>
+                <Link
+                  to="/campaigns"
+                  className="text-blue-600 hover:text-blue-700 font-semibold mt-2 inline-block"
+                >
+                  Start by exploring campaigns
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {donorStats.donations.slice(0, 5).map((donation) => {
+                  const campaign = campaigns.find(
+                    (c) => c.id === donation.campaignId
+                  );
+                  return (
+                    <div
+                      key={donation.id}
+                      className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-0"
+                    >
+                      <div>
+                        <p className="font-semibold text-gray-900">
+                          Donated ₹{Number(donation.amount).toLocaleString('en-IN')}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {campaign?.title || 'Campaign'}
+                        </p>
+                      </div>
+                      <div className="text-right text-sm text-gray-500">
+                        {donation.createdAt
+                          ? donation.createdAt.toLocaleDateString()
+                          : ''}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          ) : (
+            <div className="text-center py-12 text-gray-500">
+              <p>No recent activity to display</p>
+              <Link
+                to="/campaigns"
+                className="text-blue-600 hover:text-blue-700 font-semibold mt-2 inline-block"
+              >
+                Start by exploring campaigns
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </div>

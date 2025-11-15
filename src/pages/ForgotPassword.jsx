@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
-import config from '../config';
+import { auth } from '../firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
 
 const ForgotPassword = () => {
-  const [step, setStep] = useState(1); // 1: email, 2: code & new password
+  const [step, setStep] = useState(1); // 1: email, 2: confirmation
   const [email, setEmail] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -20,25 +21,16 @@ const ForgotPassword = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${config.API_URL}/api/auth/forgot-password`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setGeneratedCode(data.resetCode);
-        setStep(2);
-      } else {
-        setError(data.error || 'Failed to send reset code');
-      }
+      await sendPasswordResetEmail(auth, email);
+      // We keep the 2-step UI, but in Firebase the code is emailed to the user.
+      setStep(2);
     } catch (error) {
       console.error('Forgot password error:', error);
-      setError('Cannot connect to server. Please try again.');
+      let message = 'Failed to send reset email. Please try again.';
+      if (error.code === 'auth/user-not-found') {
+        message = 'No account found with this email.';
+      }
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -48,41 +40,9 @@ const ForgotPassword = () => {
     e.preventDefault();
     setError('');
 
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setError('Password must be at least 6 characters long');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const response = await fetch(`${config.API_URL}/api/auth/reset-password`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, resetCode, newPassword }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        alert('✅ Password reset successful! You can now login with your new password.');
-        navigate('/login');
-      } else {
-        setError(data.error || 'Failed to reset password');
-      }
-    } catch (error) {
-      console.error('Reset password error:', error);
-      setError('Cannot connect to server. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    // With Firebase, the reset is done via the link in the email, not here.
+    // We simply inform the user to check their inbox.
+    navigate('/login');
   };
 
   return (

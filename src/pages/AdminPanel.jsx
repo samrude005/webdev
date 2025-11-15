@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { DollarSign, CreditCard, Users, TrendingUp, Download, Search, Calendar, BarChart3, PieChart, ShoppingCart, X, Plus, Minus, Star, Eye, FileText, Package, CheckCircle, Clock, AlertCircle } from 'lucide-react';
-import config from '../config';
+import { db } from '../firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 // Marketplace Component
 const MarketplaceView = () => {
@@ -808,26 +809,37 @@ const AdminPanel = () => {
   const loadAdminData = async () => {
     setLoading(true);
     try {
-      // Fetch all donations
-      const donationsRes = await fetch(`${config.API_URL}/api/donations`);
-      const donationsData = await donationsRes.json();
-      if (donationsData.success) {
-        setDonations(donationsData.donations);
-      }
+      // Fetch all donations from Firestore
+      const donationsSnapshot = await getDocs(collection(db, 'donations'));
+      const donationsList = donationsSnapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt,
+        };
+      });
+      setDonations(donationsList);
 
-      // Fetch all campaigns
-      const campaignsRes = await fetch(`${config.API_URL}/api/campaigns`);
-      const campaignsData = await campaignsRes.json();
-      if (campaignsData.success) {
-        setCampaigns(campaignsData.campaigns);
-      }
+      // Fetch all campaigns from Firestore
+      const campaignsSnapshot = await getDocs(collection(db, 'campaigns'));
+      const campaignsList = campaignsSnapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt,
+        };
+      });
+      setCampaigns(campaignsList);
 
-      // Fetch all volunteers
-      const volunteersRes = await fetch(`${config.API_URL}/api/volunteers`);
-      const volunteersData = await volunteersRes.json();
-      if (volunteersData.success) {
-        setVolunteers(volunteersData.volunteers);
-      }
+      // Fetch all volunteers from Firestore
+      const volunteersSnapshot = await getDocs(collection(db, 'volunteers'));
+      const volunteersList = volunteersSnapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+      setVolunteers(volunteersList);
     } catch (error) {
       console.error('Error loading admin data:', error);
     } finally {

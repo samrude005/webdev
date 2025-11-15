@@ -1,5 +1,16 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import config from '../config';
+import { auth, db } from '../firebase';
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth';
+import {
+  doc,
+  getDoc,
+  setDoc,
+} from 'firebase/firestore';
 
 const AuthContext = createContext(null);
 
@@ -11,92 +22,135 @@ export const useAuth = () => {
   return context;
 };
 
+// Helper to build our app-specific user object
+const buildUserObject = (firebaseUser, profileData = {}) => {
+  if (!firebaseUser) return null;
+
+  return {
+    id: firebaseUser.uid,
+    name: profileData.name || firebaseUser.displayName || '',
+    email: firebaseUser.email,
+    userType: profileData.userType || 'donor',
+    avatar:
+      profileData.avatar ||
+      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        profileData.name || firebaseUser.email || 'User'
+      )}&background=0ea5e9&color=fff`,
+    verified: Boolean(profileData.verified),
+  };
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
-    }
-    setLoading(false);
+    // Subscribe to Firebase auth state
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!firebaseUser) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // Load additional profile data from Firestore if available
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        const snap = await getDoc(userRef);
+        const profileData = snap.exists() ? snap.data() : {};
+        const appUser = buildUserObject(firebaseUser, profileData);
+
+        setUser(appUser);
+      } catch (err) {
+        console.error('Error loading user profile:', err);
+        setUser(buildUserObject(firebaseUser));
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const login = async (email, password) => {
     try {
-      const response = await fetch(`${config.API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
+      const credential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = credential.user;
 
-      const data = await response.json();
+      const userRef = doc(db, 'users', firebaseUser.uid);
+      const snap = await getDoc(userRef);
+      const profileData = snap.exists() ? snap.data() : {};
 
-      if (data.success) {
-        setUser(data.user);
-        setToken(data.token);
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        return { success: true };
-      } else {
-        return { success: false, error: data.error };
-      }
+      const appUser = buildUserObject(firebaseUser, profileData);
+      setUser(appUser);
+
+      return { success: true };
     } catch (error) {
       console.error('Login error:', error);
-      return { success: false, error: 'Cannot connect to server. Please make sure the backend is running on port 5000.' };
+      let message = 'Login failed. Please check your credentials and try again.';
+
+      if (error.code === 'auth/user-not-found') {
+        message = 'No account found with this email.';
+      } else if (error.code === 'auth/wrong-password') {
+        message = 'Incorrect password.';
+      } else if (error.code === 'auth/too-many-requests') {
+        message = 'Too many failed attempts. Please try again later.';
+      }
+
+      return { success: false, error: message };
     }
   };
 
   const register = async (name, email, password, userType) => {
     try {
-      const response = await fetch(`${config.API_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name, email, password, userType }),
-      });
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      const firebaseUser = credential.user;
 
-      const data = await response.json();
+      const profileData = {
+        name,
+        email,
+        userType: userType || 'donor',
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(
+          name || email
+        )}&background=0ea5e9&color=fff`,
+        verified: false,
+        createdAt: new Date().toISOString(),
+      };
 
-      if (data.success) {
-        const userData = data.user;
-        const authToken = data.token;
-        
-        setUser(userData);
-        setToken(authToken);
-        setLoading(false);
-        
-        localStorage.setItem('token', authToken);
-        localStorage.setItem('user', JSON.stringify(userData));
-        
-        return { success: true, user: userData };
-      } else {
-        return { success: false, error: data.error };
-      }
+      // Save profile in Firestore
+      await setDoc(doc(db, 'users', firebaseUser.uid), profileData);
+
+      const appUser = buildUserObject(firebaseUser, profileData);
+      setUser(appUser);
+      setLoading(false);
+
+      return { success: true, user: appUser };
     } catch (error) {
       console.error('Register error:', error);
-      return { success: false, error: 'Cannot connect to server. Please make sure the backend is running on port 5000.' };
+      let message = 'Registration failed. Please try again.';
+
+      if (error.code === 'auth/email-already-in-use') {
+        message = 'An account already exists with this email.';
+      } else if (error.code === 'auth/weak-password') {
+        message = 'Password is too weak. Please use at least 6 characters.';
+      }
+
+      return { success: false, error: message };
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  const logout = async () => {
+    try {
+      await signOut(auth);
+      setUser(null);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   const value = {
     user,
-    token,
+    token: null, // kept for compatibility with existing components, but unused now
     loading,
     login,
     register,
